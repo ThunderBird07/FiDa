@@ -1,0 +1,97 @@
+# Environments
+.env
+.env.*
+!.env.example
+
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+site/
+pip-wheel-metadata/
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+
+# Coverage & test artifacts
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.cache/
+
+# Type checking & lint
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+logs/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+```// filepath: c:\Users\Swan\Development\FiDa\.gitignore
+# Environments
+.env
+.env.*
+!.env.example
+
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+site/
+pip-wheel-metadata/
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+
+# Coverage & test artifacts
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.cache/
+
+# Type checking & lint
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+logs/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
