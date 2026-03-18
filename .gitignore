@@ -40,54 +40,12 @@ logs/
 .vscode/
 .idea/
 
-# OS junk
-.DS_Store
-Thumbs.db
+# Local prototypes and desktop experiments
+prototypes/
+*.spec
 
-# Docker
-docker-compose.override.yml
-```// filepath: c:\Users\Swan\Development\FiDa\.gitignore
-# Environments
-.env
-.env.*
-!.env.example
-
-# Python cache/artifacts
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-dist/
-build/
-site/
-pip-wheel-metadata/
-
-# Virtual envs
-.venv/
-venv/
-ENV/
-
-# Coverage & test artifacts
-.coverage
-.coverage.*
-coverage.xml
-htmlcov/
-.pytest_cache/
-.cache/
-
-# Type checking & lint
-.mypy_cache/
-.ruff_cache/
-
-# Logs
-*.log
-logs/
-
-# IDE/editor
-.vscode/
-.idea/
+# Desktop/Qt artifacts
+.qt_for_python/
 
 # OS junk
 .DS_Store
@@ -95,3 +53,7 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Extras
+runapp.sh
+FIDA_PLAN.txt
