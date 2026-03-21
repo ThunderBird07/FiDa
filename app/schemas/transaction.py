@@ -16,6 +16,9 @@ class TransactionCreate(BaseModel):
     amount: Decimal = Field(gt=0)
     occurred_at: datetime | None = None
     note: str | None = Field(default=None, max_length=255)
+    encrypted_blob: str | None = None
+    encryption_nonce: str | None = Field(default=None, max_length=255)
+    encryption_version: int = Field(default=1, ge=1)
 
 
 class TransactionUpdate(BaseModel):
@@ -25,6 +28,9 @@ class TransactionUpdate(BaseModel):
     amount: Decimal | None = Field(default=None, gt=0)
     occurred_at: datetime | None = None
     note: str | None = Field(default=None, max_length=255)
+    encrypted_blob: str | None = None
+    encryption_nonce: str | None = Field(default=None, max_length=255)
+    encryption_version: int | None = Field(default=None, ge=1)
 
 
 class TransactionRead(BaseModel):
@@ -38,4 +44,7 @@ class TransactionRead(BaseModel):
     amount: Decimal
     occurred_at: datetime
     note: str | None
+    encrypted_blob: str | None
+    encryption_nonce: str | None
+    encryption_version: int
     created_at: datetime

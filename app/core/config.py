@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
+    ENFORCE_ENCRYPTED_WRITES: bool = True
 
     model_config = SettingsConfigDict(env_file=".env")
 

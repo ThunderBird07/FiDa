@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from app.core.security import AuthenticatedUser, get_current_user
 from app.db.session import get_session
 from app.models.category import Category
@@ -39,17 +40,47 @@ def _get_category_or_404(session: Session, category_id: int, user_id: UUID) -> C
     return category
 
 
+def _validate_encryption_fields(
+    *,
+    encrypted_blob: str | None,
+    encryption_nonce: str | None,
+    requires_encrypted_write: bool,
+) -> None:
+    has_blob = bool(encrypted_blob)
+    has_nonce = bool(encryption_nonce)
+    if has_blob != has_nonce:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="encrypted_blob and encryption_nonce must be provided together",
+        )
+
+    if requires_encrypted_write and not (has_blob and has_nonce):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Encrypted payload is required for this write",
+        )
+
+
 @router.post("", response_model=CategoryRead, status_code=status.HTTP_201_CREATED)
 def create_category(
     payload: CategoryCreate,
     session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> CategoryRead:
+    _validate_encryption_fields(
+        encrypted_blob=payload.encrypted_blob,
+        encryption_nonce=payload.encryption_nonce,
+        requires_encrypted_write=settings.ENFORCE_ENCRYPTED_WRITES,
+    )
+
     user_id = _parse_user_id(current_user.user_id)
     category = Category(
         user_id=user_id,
         name=payload.name,
         kind=payload.kind,
+        encrypted_blob=payload.encrypted_blob,
+        encryption_nonce=payload.encryption_nonce,
+        encryption_version=payload.encryption_version,
         is_default=payload.is_default,
     )
     session.add(category)
@@ -93,6 +124,13 @@ def update_category(
     user_id = _parse_user_id(current_user.user_id)
     category = _get_category_or_404(session, category_id, user_id)
     changes = payload.model_dump(exclude_unset=True)
+
+    updates_sensitive_fields = any(field in changes for field in ("name", "kind"))
+    _validate_encryption_fields(
+        encrypted_blob=changes.get("encrypted_blob"),
+        encryption_nonce=changes.get("encryption_nonce"),
+        requires_encrypted_write=settings.ENFORCE_ENCRYPTED_WRITES and updates_sensitive_fields,
+    )
 
     for key, value in changes.items():
         setattr(category, key, value)

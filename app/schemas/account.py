@@ -13,6 +13,9 @@ class AccountCreate(BaseModel):
     type: AccountType = AccountType.BANK
     balance: Decimal = Decimal("0.00")
     currency: str = Field(default="USD", min_length=3, max_length=3)
+    encrypted_blob: str | None = None
+    encryption_nonce: str | None = Field(default=None, max_length=255)
+    encryption_version: int = Field(default=1, ge=1)
 
 
 class AccountUpdate(BaseModel):
@@ -20,6 +23,9 @@ class AccountUpdate(BaseModel):
     type: AccountType | None = None
     balance: Decimal | None = None
     currency: str | None = Field(default=None, min_length=3, max_length=3)
+    encrypted_blob: str | None = None
+    encryption_nonce: str | None = Field(default=None, max_length=255)
+    encryption_version: int | None = Field(default=None, ge=1)
     is_active: bool | None = None
 
 
@@ -32,4 +38,7 @@ class AccountRead(BaseModel):
     type: AccountType
     balance: Decimal
     currency: str
+    encrypted_blob: str | None
+    encryption_nonce: str | None
+    encryption_version: int
     is_active: bool

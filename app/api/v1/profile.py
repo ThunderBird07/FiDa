@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.security import AuthenticatedUser, get_current_user
@@ -12,6 +13,24 @@ from app.schemas.profile import UserProfileRead, UserProfileUpdate
 
 
 router = APIRouter(prefix="/profile", tags=["profile"])
+
+COUNTRY_CURRENCY_MAP = {
+    "AU": "AUD",
+    "CA": "CAD",
+    "DE": "EUR",
+    "IN": "INR",
+    "JP": "JPY",
+    "LK": "LKR",
+    "SG": "SGD",
+    "AE": "AED",
+    "GB": "GBP",
+    "US": "USD",
+}
+
+
+def _currency_for_country(country_code: str, fallback_currency: str) -> str:
+    code = str(country_code or "").upper()
+    return COUNTRY_CURRENCY_MAP.get(code, (fallback_currency or "USD").upper())
 
 
 def _parse_user_id(raw_user_id: str) -> UUID:
@@ -37,12 +56,40 @@ def _get_or_create_profile(session: Session, current_user: AuthenticatedUser) ->
             detail="Authenticated user email is missing",
         )
 
+    # If a profile already exists for this email, reuse it to avoid duplicate rows.
+    profile_by_email = session.exec(
+        select(UserProfile).where(UserProfile.email == current_user.email)
+    ).first()
+    if profile_by_email is not None:
+        if profile_by_email.id != user_id:
+            profile_by_email.id = user_id
+            session.add(profile_by_email)
+            session.commit()
+            session.refresh(profile_by_email)
+        return profile_by_email
+
     profile = UserProfile(
         id=user_id,
         email=current_user.email,
     )
     session.add(profile)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # Handle concurrent creation safely by fetching the winner row.
+        session.rollback()
+        existing = session.exec(
+            select(UserProfile).where(UserProfile.email == current_user.email)
+        ).first()
+        if existing is None:
+            raise
+        if existing.id != user_id:
+            existing.id = user_id
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
+        return existing
+
     session.refresh(profile)
     return profile
 
@@ -66,6 +113,9 @@ def update_profile(
     changes = payload.model_dump(exclude_unset=True)
     if "currency" in changes and changes["currency"] is not None:
         changes["currency"] = changes["currency"].upper()
+    if "country" in changes and changes["country"] is not None:
+        changes["country"] = changes["country"].upper()
+        changes["currency"] = _currency_for_country(changes["country"], profile.currency)
 
     for key, value in changes.items():
         setattr(profile, key, value)

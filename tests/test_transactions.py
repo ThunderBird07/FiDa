@@ -75,6 +75,7 @@ async def test_create_and_filter_transactions(test_app) -> None:
                 "note": "Lunch and groceries",
             },
         )
+        account_after_create = await ac.get(f"/v1/accounts/{account_id}")
         list_response = await ac.get(
             "/v1/transactions",
             params={"type": "expense", "account_id": account_id},
@@ -84,6 +85,8 @@ async def test_create_and_filter_transactions(test_app) -> None:
     created = create_response.json()
     assert created["amount"] == "45.67"
     assert created["type"] == "expense"
+    assert account_after_create.status_code == 200
+    assert account_after_create.json()["balance"] == "-45.67"
 
     assert list_response.status_code == 200
     listed = list_response.json()
@@ -117,24 +120,33 @@ async def test_get_update_delete_transaction(test_app) -> None:
             },
         )
         transaction_id = create_response.json()["id"]
+        account_after_create = await ac.get(f"/v1/accounts/{account_id}")
 
         get_response = await ac.get(f"/v1/transactions/{transaction_id}")
         update_response = await ac.patch(
             f"/v1/transactions/{transaction_id}",
             json={"amount": "25.00", "note": "Taxi fare"},
         )
+        account_after_update = await ac.get(f"/v1/accounts/{account_id}")
         delete_response = await ac.delete(f"/v1/transactions/{transaction_id}")
+        account_after_delete = await ac.get(f"/v1/accounts/{account_id}")
         after_delete_response = await ac.get(f"/v1/transactions/{transaction_id}")
 
     assert get_response.status_code == 200
     assert get_response.json()["amount"] == "20.00"
+    assert account_after_create.status_code == 200
+    assert account_after_create.json()["balance"] == "80.00"
 
     assert update_response.status_code == 200
     updated = update_response.json()
     assert updated["amount"] == "25.00"
     assert updated["note"] == "Taxi fare"
+    assert account_after_update.status_code == 200
+    assert account_after_update.json()["balance"] == "75.00"
 
     assert delete_response.status_code == 204
+    assert account_after_delete.status_code == 200
+    assert account_after_delete.json()["balance"] == "100.00"
     assert after_delete_response.status_code == 404
 
 

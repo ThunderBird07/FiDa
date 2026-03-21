@@ -109,3 +109,78 @@ async def test_get_update_delete_account(test_app) -> None:
 
     assert delete_response.status_code == 204
     assert after_delete_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_account_with_transactions_soft_deletes(test_app) -> None:
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        create_account_response = await ac.post(
+            "/v1/accounts",
+            json={
+                "name": "Main Checking",
+                "type": "bank",
+                "balance": "1000.00",
+                "currency": "usd",
+            },
+        )
+        account_id = create_account_response.json()["id"]
+
+        create_txn_response = await ac.post(
+            "/v1/transactions",
+            json={
+                "account_id": account_id,
+                "type": "expense",
+                "amount": "25.00",
+            },
+        )
+        delete_response = await ac.delete(f"/v1/accounts/{account_id}")
+        list_response = await ac.get("/v1/accounts")
+        list_all_response = await ac.get("/v1/accounts", params={"include_inactive": "true"})
+        get_deleted_response = await ac.get(f"/v1/accounts/{account_id}")
+
+    assert create_txn_response.status_code == 201
+    assert delete_response.status_code == 204
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+    assert list_all_response.status_code == 200
+    assert len(list_all_response.json()) == 1
+    assert list_all_response.json()[0]["is_active"] is False
+    assert get_deleted_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_account_with_transactions_and_purge_flag(test_app) -> None:
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        create_account_response = await ac.post(
+            "/v1/accounts",
+            json={
+                "name": "Main Checking",
+                "type": "bank",
+                "balance": "1000.00",
+                "currency": "usd",
+            },
+        )
+        account_id = create_account_response.json()["id"]
+
+        create_txn_response = await ac.post(
+            "/v1/transactions",
+            json={
+                "account_id": account_id,
+                "type": "expense",
+                "amount": "25.00",
+            },
+        )
+        delete_response = await ac.delete(f"/v1/accounts/{account_id}", params={"delete_transactions": "true"})
+        list_accounts_response = await ac.get("/v1/accounts")
+        get_deleted_account_response = await ac.get(f"/v1/accounts/{account_id}")
+        list_transactions_response = await ac.get("/v1/transactions")
+
+    assert create_txn_response.status_code == 201
+    assert delete_response.status_code == 204
+    assert list_accounts_response.status_code == 200
+    assert list_accounts_response.json() == []
+    assert get_deleted_account_response.status_code == 404
+    assert list_transactions_response.status_code == 200
+    assert list_transactions_response.json() == []
