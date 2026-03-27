@@ -161,3 +161,84 @@ async def test_create_transaction_requires_owned_account(test_app) -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Account not found for current user"
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_global_search_and_sort(test_app) -> None:
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        account_axis = await ac.post(
+            "/v1/accounts",
+            json={"name": "Axis", "type": "bank", "balance": "0.00", "currency": "usd"},
+        )
+        account_wallet = await ac.post(
+            "/v1/accounts",
+            json={"name": "Wallet", "type": "cash", "balance": "0.00", "currency": "usd"},
+        )
+        category_food = await ac.post(
+            "/v1/categories",
+            json={"name": "Food", "kind": "expense", "is_default": False},
+        )
+
+        axis_id = account_axis.json()["id"]
+        wallet_id = account_wallet.json()["id"]
+        food_id = category_food.json()["id"]
+
+        await ac.post(
+            "/v1/transactions",
+            json={
+                "account_id": axis_id,
+                "category_id": food_id,
+                "type": "expense",
+                "amount": "100.00",
+                "occurred_at": "2026-03-22T10:00:00Z",
+                "note": "Lunch",
+            },
+        )
+        await ac.post(
+            "/v1/transactions",
+            json={
+                "account_id": wallet_id,
+                "category_id": food_id,
+                "type": "expense",
+                "amount": "20.00",
+                "occurred_at": "2026-03-21T10:00:00Z",
+                "note": "Snack",
+            },
+        )
+        await ac.post(
+            "/v1/transactions",
+            json={
+                "account_id": axis_id,
+                "category_id": food_id,
+                "type": "income",
+                "amount": "500.00",
+                "occurred_at": "2026-03-20T10:00:00Z",
+                "note": "Salary",
+            },
+        )
+
+        search_by_account = await ac.get("/v1/transactions", params={"q": "Axis"})
+        search_by_date = await ac.get(
+            "/v1/transactions",
+            params={"q": "22/3/2026", "tz_offset_minutes": -330},
+        )
+        sort_by_amount_asc = await ac.get(
+            "/v1/transactions",
+            params={"sort_by": "amount", "sort_dir": "asc", "limit": 10},
+        )
+
+    assert search_by_account.status_code == 200
+    axis_records = search_by_account.json()
+    assert len(axis_records) == 2
+    assert all(item["account_id"] == axis_id for item in axis_records)
+
+    assert search_by_date.status_code == 200
+    date_records = search_by_date.json()
+    assert len(date_records) == 1
+    assert date_records[0]["amount"] == "100.00"
+
+    assert sort_by_amount_asc.status_code == 200
+    sorted_records = sort_by_amount_asc.json()
+    amounts = [item["amount"] for item in sorted_records]
+    assert amounts == sorted(amounts, key=lambda value: float(value))

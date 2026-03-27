@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import and_, or_
+from sqlalchemy import String, and_, cast, or_
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -18,6 +20,9 @@ from app.schemas.transaction import TransactionCreate, TransactionRead, Transact
 
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+TransactionSortBy = Literal["occurred_at", "amount", "created_at"]
+SortDir = Literal["asc", "desc"]
 
 
 def _transaction_delta(transaction_type: TransactionType, amount: Decimal) -> Decimal:
@@ -99,6 +104,42 @@ def _validate_encryption_fields(
         )
 
 
+def _search_date_bounds(raw_query: str, tz_offset_minutes: int = 0) -> tuple[datetime, datetime] | None:
+    query = raw_query.strip()
+    if not query:
+        return None
+
+    parsed_date = None
+
+    iso_match = re.fullmatch(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", query)
+    dmy_match = re.fullmatch(r"(\d{1,2})[-/](\d{1,2})[-/](\d{4})", query)
+
+    try:
+        if iso_match:
+            year, month, day = map(int, iso_match.groups())
+            parsed_date = datetime(year, month, day).date()
+        elif dmy_match:
+            day, month, year = map(int, dmy_match.groups())
+            parsed_date = datetime(year, month, day).date()
+    except ValueError:
+        parsed_date = None
+
+    if parsed_date is None:
+        for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
+            try:
+                parsed_date = datetime.strptime(query, fmt).date()
+                break
+            except ValueError:
+                continue
+
+    if parsed_date is not None:
+        local_start = datetime(parsed_date.year, parsed_date.month, parsed_date.day, tzinfo=timezone.utc)
+        start_utc = local_start - timedelta(minutes=tz_offset_minutes)
+        return start_utc, start_utc + timedelta(days=1)
+
+    return None
+
+
 @router.post("", response_model=TransactionRead, status_code=status.HTTP_201_CREATED)
 def create_transaction(
     payload: TransactionCreate,
@@ -143,14 +184,30 @@ def create_transaction(
 def list_transactions(
     session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    q: str | None = None,
     type_: TransactionType | None = Query(default=None, alias="type"),
     account_id: int | None = None,
     category_id: int | None = None,
     from_date: datetime | None = None,
     to_date: datetime | None = None,
+    sort_by: TransactionSortBy = Query(default="occurred_at"),
+    sort_dir: SortDir = Query(default="desc"),
+    limit: int = Query(default=120, ge=1, le=500),
+    tz_offset_minutes: int = Query(default=0, ge=-840, le=840),
 ) -> list[TransactionRead]:
     user_id = _parse_user_id(current_user.user_id)
-    statement = select(Transaction).where(Transaction.user_id == user_id)
+    statement = (
+        select(Transaction)
+        .join(
+            Account,
+            and_(
+                Account.id == Transaction.account_id,
+                Account.user_id == user_id,
+            ),
+        )
+        .outerjoin(Category, Category.id == Transaction.category_id)
+        .where(Transaction.user_id == user_id)
+    )
 
     if type_ is not None:
         statement = statement.where(Transaction.type == type_)
@@ -163,7 +220,42 @@ def list_transactions(
     if to_date is not None:
         statement = statement.where(Transaction.occurred_at <= to_date)
 
-    records = session.exec(statement.order_by(Transaction.occurred_at.desc(), Transaction.id.desc())).all()
+    query_text = (q or "").strip()
+    if query_text:
+        search_predicates = [
+            Account.name.ilike(f"%{query_text}%"),
+            Category.name.ilike(f"%{query_text}%"),
+            Transaction.note.ilike(f"%{query_text}%"),
+            cast(Transaction.amount, String).ilike(f"%{query_text}%"),
+            cast(Transaction.type, String).ilike(f"%{query_text}%"),
+        ]
+
+        date_bounds = _search_date_bounds(query_text, tz_offset_minutes=tz_offset_minutes)
+        if date_bounds is not None:
+            start, end = date_bounds
+            search_predicates.append(
+                and_(
+                    Transaction.occurred_at >= start,
+                    Transaction.occurred_at < end,
+                )
+            )
+
+        statement = statement.where(or_(*search_predicates))
+
+    sort_column = Transaction.occurred_at
+    if sort_by == "amount":
+        sort_column = Transaction.amount
+    elif sort_by == "created_at":
+        sort_column = Transaction.created_at
+
+    if sort_dir == "asc":
+        statement = statement.order_by(sort_column.asc(), Transaction.id.asc())
+    else:
+        statement = statement.order_by(sort_column.desc(), Transaction.id.desc())
+
+    statement = statement.limit(limit)
+
+    records = session.exec(statement).all()
     return [TransactionRead.model_validate(record) for record in records]
 
 
